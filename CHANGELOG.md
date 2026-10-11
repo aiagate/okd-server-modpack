@@ -1,18 +1,16 @@
 # 変更履歴
 
-## 未リリース — 公開・再開手順の修正
+## 未リリース
 
-- 公開済みの両 ZIP と source receipt を正確な asset ID・tag commit・SHA で取得し、再ビルドせず同 run の承認後に提出する経路を追加。新 dispatch と server_only 復旧に対応。
-- 新版ビルドは既存同版 Release があれば停止。対象変更は新しい版でレビューし、v0.0.1 の公開 ZIP は変更しない。
+- パックの紹介と導入案内を簡潔にしました。
+- 公開済みファイルを使って、提出を安全に再開できるようにしました。
 
 ## 0.0.1 — 2026-10-11
 
-- OKD 専用リポジトリへ移行。旧リポジトリの履歴・プレビュータグ・配布物を保持。
-- Minecraft 1.21.1 / NeoForge 21.1.250、公開プレビュー e7e0fbd の固定 MOD 参照20件を維持。
-- 固定 packwiz によるクライアント ZIP と、Inventory Profiles Next / libIPN を除く18件の軽量サーバーパックを生成。
-- 正確な成果物と commit、承認、永続 claim/result、公開 ZIP SHA の照合を備えた CI と提出 workflow を整備。
-- 実環境の最新構成・独自設定の完全再現ではない。CurseForge 対象は未確定で、提出・審査・公開の確認は別途必要。
+- Create を中心とした OKD の初版を、専用リポジトリで配布しました。
+- Minecraft 1.21.1 / NeoForge 21.1.250 と、公開プレビューの MOD 構成を引き継ぎました。
+- クライアント用 ZIP と、クライアント専用 MOD を除いた軽量サーバー導入パックを用意しました。
 
-## 公開取込プレビュー
+CurseForge での公開は準備中です。今回の配布 ZIP のゲーム・専用サーバー起動は未検証です。
 
-`okd-server-modpack-import-preview-20261006-e7e0fbd` と旧 `preview-create-client-20261006-9f7671a` を保存。仮版 `0.0.0-local.20260913` は正式提出用の版として使用しない。
+過去のプレビューと、ビルド・公開の詳細は [開発手順](docs/development.md)・[公開手順](docs/publishing.md)を参照してください。
