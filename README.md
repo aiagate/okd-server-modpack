@@ -4,23 +4,56 @@ Create を中心に、工場の自動化、飛行する装置づくり、素材�
 
 **Minecraft 1.21.1 / NeoForge 21.1.250** に対応します。
 
-## 遊び方・サーバー導入
+## クライアント
 
-[0.0.1 のダウンロード](https://github.com/aiagate/okd-server-modpack/releases/tag/v0.0.1)から、クライアント用 `okd-server-modpack-0.0.1.zip` を CurseForge App にインポートしてください。CurseForge での公開は準備中です。
+[最新の GitHub Release](https://github.com/aiagate/okd-server-modpack/releases/latest) の Assets から、クライアント用 `okd-server-modpack-<版>.zip` をダウンロードし、CurseForge App の「Import」で読み込んで起動します。`-serverpack.zip` や GitHub の Source code ZIP はクライアント用ではありません。CurseForge での公開は準備中です。
 
-### サーバー
+## サーバー
 
-サーバー用 `okd-server-modpack-0.0.1-serverpack.zip` は、Docker の標準インストーラーに渡す軽量の導入パックです。MOD JAR・Java・ワールドは同梱しません。
+同じ Release の `okd-server-modpack-<版>-serverpack.zip` を使います。これは Docker の標準インストーラーで MOD と NeoForge を取得するための軽量パックです。MOD JAR・Java・ワールドは同梱せず、展開した JAR を直接起動する方式ではありません。
 
-空のディレクトリへ展開し、元 ZIP を `compose.yaml` と同じ場所に残してください。Minecraft EULA を確認し、同意する場合だけ次を実行します。初回は既存ワールドと異なる新しい volume を使います。
+### 準備と設定
+
+Docker Engine または Docker Desktop、Docker Compose v2、ZIP を展開できる環境、インターネット接続が必要です。Java 21 はコンテナに含まれます。ゲーム用メモリは既定で 4G なので、ホストにも余裕を確保してください。
+
+以下は公開済み **0.0.1** の例です。新しい空の `okd-server-0.0.1` ディレクトリを作り、サーバー ZIP をそこへ置いて実行します。別の版ではディレクトリ名と ZIP 名を合わせてください。
 
 ```sh
+cd okd-server-0.0.1
+unzip okd-server-modpack-0.0.1-serverpack.zip
 mkdir downloads
-EULA=true docker compose up -d
-docker compose logs -f
 ```
 
-自動取得できない MOD は、ZIP 内の指定 file ID の公式ファイルを取得して `downloads/` に置きます。ログを確認し、同じ版のクライアントで接続してください。詳しい導入案内は ZIP 内の `README-SERVER.md` にあります。既存ワールドを移行する場合は、先にバックアップと構成確認を行ってください。
+元 ZIP は `compose.yaml` と同じ場所に残します。ZIP 内の `manifest.json` と `SERVER-REFERENCES.json` は導入対象を記録したファイルなので編集しません。
+
+[Minecraft EULA](https://www.minecraft.net/eula) を本人が確認し、同意する場合だけ、`compose.yaml` と同じ場所に `.env` を作成します。
+
+```dotenv
+EULA=true
+MEMORY=4G
+MC_PORT=25565
+```
+
+必須値は `EULA` です。`MEMORY` と `MC_PORT` は任意で、上記が既定値です。配布された `compose.yaml` の `TYPE=AUTO_CURSEFORGE` と `CF_MODPACK_ZIP=/pack/okd-server-modpack-0.0.1-serverpack.zip` はそのまま使います。通常の導入では作者用 Upload token は不要です。[インストーラーの公式案内](https://docker-minecraft-server.readthedocs.io/en/latest/types-and-platforms/mod-platforms/auto-curseforge/)も参照してください。
+
+### 起動・接続・停止
+
+同じディレクトリで実行します。
+
+```sh
+docker compose up -d
+docker compose logs -f minecraft
+```
+
+ログに手動ダウンロードが必要な MOD が表示されたら、指定された版の公式ファイルをブラウザで取得して `downloads/` に置き、`docker compose restart minecraft` で再開します。起動完了後、同じパック版のクライアントから `サーバーのアドレス:MC_PORT` へ接続します。別の端末から接続する場合は、そのポートへの接続を許可する必要があります。
+
+ワールド・設定・取得した MOD は Docker の named volume `server-data`（実際の名前には Compose プロジェクト名が付きます）に保存されます。ログ表示は Ctrl+C で終了でき、サーバーは動き続けます。サーバーを停止するには次を実行してください。
+
+```sh
+docker compose down
+```
+
+停止後も named volume のデータは残ります。`down -v` はデータを削除するため、通常の停止には使いません。既存ワールドの移行は、停止中のバックアップと構成確認を行ってから別途進めてください。詳細は ZIP 内の `README-SERVER.md` にあります。
 
 初版は公開取込プレビューの構成を引き継いでいます。稼働中サーバーの最新設定を完全に再現したものではなく、今回の配布 ZIP のゲーム・専用サーバー起動は未検証です。第三者 MOD には各作者のライセンスが適用されます。
 
