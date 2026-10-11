@@ -6,7 +6,7 @@ Create を中心に、工場の自動化、飛行する装置づくり、素材�
 
 ## クライアント
 
-[最新の GitHub Release](https://github.com/aiagate/okd-server-modpack/releases/latest) の Assets から、クライアント用 `okd-server-modpack-<版>.zip` をダウンロードし、CurseForge App の「Import」で読み込んで起動します。`-serverpack.zip` や GitHub の Source code ZIP はクライアント用ではありません。CurseForge での公開は準備中です。
+[最新の GitHub Release](https://github.com/aiagate/okd-server-modpack/releases/latest) の Assets から、クライアント用 `okd-server-modpack-<版>.zip` をダウンロードし、CurseForge App の「Import」で読み込んで起動します。`-serverpack.zip` や GitHub の Source code ZIP はクライアント用ではありません。
 
 ## サーバー
 
@@ -34,7 +34,7 @@ MEMORY=4G
 MC_PORT=25565
 ```
 
-必須値は `EULA` です。`MEMORY` と `MC_PORT` は任意で、上記が既定値です。配布された `compose.yaml` の `TYPE=AUTO_CURSEFORGE` と `CF_MODPACK_ZIP=/pack/okd-server-modpack-0.0.1-serverpack.zip` はそのまま使います。通常の導入では作者用 Upload token は不要です。[インストーラーの公式案内](https://docker-minecraft-server.readthedocs.io/en/latest/types-and-platforms/mod-platforms/auto-curseforge/)も参照してください。
+必須値は `EULA` です。`MEMORY` と `MC_PORT` は任意で、上記が既定値です。配布された `compose.yaml` の `TYPE=AUTO_CURSEFORGE` と `CF_MODPACK_ZIP=/pack/okd-server-modpack-0.0.1-serverpack.zip` はそのまま使います。[インストーラーの公式案内](https://docker-minecraft-server.readthedocs.io/en/latest/types-and-platforms/mod-platforms/auto-curseforge/)も参照してください。
 
 ### 起動・接続・停止
 
@@ -55,7 +55,7 @@ docker compose down
 
 停止後も named volume のデータは残ります。`down -v` はデータを削除するため、通常の停止には使いません。既存ワールドの移行は、停止中のバックアップと構成確認を行ってから別途進めてください。詳細は ZIP 内の `README-SERVER.md` にあります。
 
-初版は公開取込プレビューの構成を引き継いでいます。稼働中サーバーの最新設定を完全に再現したものではなく、今回の配布 ZIP のゲーム・専用サーバー起動は未検証です。第三者 MOD には各作者のライセンスが適用されます。
+第三者 MOD には各作者のライセンスが適用されます。
 
 ## 詳しい情報
 
