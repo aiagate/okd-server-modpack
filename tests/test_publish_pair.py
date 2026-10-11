@@ -193,4 +193,27 @@ class DurableProvenanceTests(unittest.TestCase):
                  patch.object(p.subprocess,'run'), self.assertRaises(release.Invalid):
                 p.publish_github(paths[0],paths[1],'0.0.2',assets[0]['digest'][7:],assets[1]['digest'][7:],paths[2:])
 
+class DryRunPlanTests(unittest.TestCase):
+    def test_plan_matches_scope_manual_publication_and_existing_parent(self):
+        for mode,manual in (('server_only',True),('client_server',False),('client_server',True)):
+            with self.subTest(mode=mode,manual=manual),tempfile.TemporaryDirectory() as tmp:
+                root=Path(tmp);(root/'client.json').write_text('{}');(root/'server.json').write_text('{"sha256":"'+'b'*64+'"}')
+                args=['publish_pair.py','--client',str(root/'client.zip'),'--client-receipt',str(root/'client.json'),
+                      '--server',str(root/'server.zip'),'--server-receipt',str(root/'server.json'),
+                      '--receipt',str(root/'plan.json'),'--mode',mode,'--existing-client-file-id','101']
+                if manual:args.append('--manual-release')
+                with patch.object(sys,'argv',args), \
+                     patch('native_pack.load_inputs',return_value=({'version':'synthetic-next'},{},{},'source')), \
+                     patch('native_pack.runtime_config',return_value=CONFIG), \
+                     patch('native_pack.verify_client',return_value='a'*64),patch('native_pack.policy',return_value={}), \
+                     patch('serverpack.verify_prepared'),patch.object(p,'publish_github') as github,patch.object(p,'publish') as post:
+                    self.assertEqual(p.main(),0)
+                row=json.loads((root/'plan.json').read_text())
+                self.assertEqual(row['mode'],mode);self.assertEqual(row['manual_release'],manual)
+                self.assertEqual(row['existing_client_file_id'],101)
+                self.assertEqual(row['server_metadata']['isMarkedForManualRelease'],manual)
+                if mode=='server_only':self.assertIsNone(row['client_metadata'])
+                else:self.assertEqual(row['client_metadata']['isMarkedForManualRelease'],manual)
+                github.assert_not_called();post.assert_not_called()
+
 if __name__=='__main__': unittest.main()

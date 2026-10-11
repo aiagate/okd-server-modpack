@@ -73,16 +73,28 @@ jobs:
         uses: ./.github/actions/build-pack
         with:
           output-directory: ${{ runner.temp }}/verified
+          submission-mode: ${{ inputs.mode }}
+          manual-release: ${{ inputs.manual_release }}
+          existing-client-file-id: ${{ inputs.existing_client_file_id }}
       - name: Acquire exact published release without rebuilding
         if: inputs.artifact_source == 'published_release'
         env:
           GH_TOKEN: ${{ github.token }}
+          MODE: ${{ inputs.mode }}
+          MANUAL_RELEASE: ${{ inputs.manual_release }}
+          EXISTING_CLIENT: ${{ inputs.existing_client_file_id }}
         run: |
           set -euo pipefail
           python3 -m unittest discover -s tests -v
           python3 scripts/published_pack.py --output "$RUNNER_TEMP/verified"
           VERSION=$(python3 -c 'import json; print(json.load(open("pack/release.json"))["version"])')
-          python3 scripts/publish_pair.py --client "$RUNNER_TEMP/verified/okd-server-modpack-${VERSION}.zip" --client-receipt "$RUNNER_TEMP/verified/client.json" --server "$RUNNER_TEMP/verified/okd-server-modpack-${VERSION}-serverpack.zip" --server-receipt "$RUNNER_TEMP/verified/server.json" --release-receipt "$RUNNER_TEMP/verified/github-release-receipt.json" --published-release --receipt "$RUNNER_TEMP/verified/plan.json"
+          EXTRA=()
+          if [[ "$MANUAL_RELEASE" == true ]]; then EXTRA+=(--manual-release); fi
+          if [[ -n "$EXISTING_CLIENT" ]]; then
+            [[ "$EXISTING_CLIENT" =~ ^[1-9][0-9]*$ ]] || exit 1
+            EXTRA+=(--existing-client-file-id "$EXISTING_CLIENT")
+          fi
+          python3 scripts/publish_pair.py --mode "$MODE" "${EXTRA[@]}" --client "$RUNNER_TEMP/verified/okd-server-modpack-${VERSION}.zip" --client-receipt "$RUNNER_TEMP/verified/client.json" --server "$RUNNER_TEMP/verified/okd-server-modpack-${VERSION}-serverpack.zip" --server-receipt "$RUNNER_TEMP/verified/server.json" --release-receipt "$RUNNER_TEMP/verified/github-release-receipt.json" --published-release --receipt "$RUNNER_TEMP/verified/plan.json"
       - name: Expose exact selected client filename
         id: selected
         run: |

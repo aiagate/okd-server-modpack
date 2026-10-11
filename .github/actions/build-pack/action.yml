@@ -4,6 +4,15 @@ inputs:
   output-directory:
     description: Absolute path to a new output directory
     required: true
+  submission-mode:
+    description: Requested submission scope for the review plan
+    default: client_server
+  manual-release:
+    description: Hold for manual publication after moderation
+    default: 'true'
+  existing-client-file-id:
+    description: Optional existing parent for server recovery
+    default: ''
 outputs:
   client_zip:
     description: Absolute path to the verified client ZIP
@@ -37,6 +46,9 @@ runs:
       shell: bash
       env:
         BUILD_OUTPUT: ${{ inputs.output-directory }}
+        MODE: ${{ inputs.submission-mode }}
+        MANUAL_RELEASE: ${{ inputs.manual-release }}
+        EXISTING_CLIENT: ${{ inputs.existing-client-file-id }}
       run: |
         set -euo pipefail
         python3 scripts/native_pack.py --output "$BUILD_OUTPUT" --packwiz "$RUNNER_TEMP/tools/packwiz"
@@ -44,5 +56,11 @@ runs:
         VERSION=$(python3 -c 'import json; print(json.load(open("pack/release.json"))["version"])')
         CLIENT_ZIP="$BUILD_OUTPUT/okd-server-modpack-${VERSION}.zip"
         SERVER_ZIP="$BUILD_OUTPUT/okd-server-modpack-${VERSION}-serverpack.zip"
-        python3 scripts/publish_pair.py --client "$CLIENT_ZIP" --client-receipt "$BUILD_OUTPUT/client.json" --server "$SERVER_ZIP" --server-receipt "$BUILD_OUTPUT/server.json" --release-receipt "$BUILD_OUTPUT/github-release-receipt.json" --receipt "$BUILD_OUTPUT/plan.json"
+        EXTRA=()
+        if [[ "$MANUAL_RELEASE" == true ]]; then EXTRA+=(--manual-release); fi
+        if [[ -n "$EXISTING_CLIENT" ]]; then
+          [[ "$EXISTING_CLIENT" =~ ^[1-9][0-9]*$ ]] || exit 1
+          EXTRA+=(--existing-client-file-id "$EXISTING_CLIENT")
+        fi
+        python3 scripts/publish_pair.py --mode "$MODE" "${EXTRA[@]}" --client "$CLIENT_ZIP" --client-receipt "$BUILD_OUTPUT/client.json" --server "$SERVER_ZIP" --server-receipt "$BUILD_OUTPUT/server.json" --release-receipt "$BUILD_OUTPUT/github-release-receipt.json" --receipt "$BUILD_OUTPUT/plan.json"
         echo "client_zip=$CLIENT_ZIP" >> "$GITHUB_OUTPUT"

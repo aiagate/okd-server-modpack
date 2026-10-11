@@ -345,9 +345,12 @@ def main():
             dry = dict(schema_version=1, **identity, status='dry_run_read_only' if args.published_release else 'dry_run_no_network', mode=args.mode,
                        release_source_commit=provenance.get('source_commit') if provenance else None,
                        published_release_bytes=args.published_release,
+                       manual_release=args.manual_release,
+                       existing_client_file_id=args.existing_client_file_id,
                        published_version_blocks_changed_bytes=bool(known and known.get('version') == lock['version'] and any(known.get(k) != v for k,v in identity.items())),
                        existing_state_matches=bool(known and all(known.get(k) == v for k,v in identity.items())),
-                       client_metadata=release.metadata(configs['client'], Path('CHANGELOG.md').read_text()),
+                       client_metadata=dict(release.metadata(configs['client'], Path('CHANGELOG.md').read_text()),
+                           isMarkedForManualRelease=args.manual_release) if args.mode == 'client_server' else None,
                        server_metadata=server_metadata(configs['client'],lock['version'],Path('CHANGELOG.md').read_text(),'recorded-or-returned-client-file-id',args.manual_release))
             with args.receipt.open('x') as handle:
                 json.dump(dry, handle, indent=2); handle.write('\n')
