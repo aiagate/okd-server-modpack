@@ -2,6 +2,8 @@
 
 ## 移行元と公開履歴
 
+配布ツールは [Shimae Server Modpack](https://github.com/aiagate/shimae-server-modpack) の MIT ライセンスの実装を基にしています。元の著作権・許諾表示は [LICENSE](../LICENSE) に保持しています。
+
 既存の public リポジトリ `minecraft-modpack-release` を `okd-server-modpack` に改名し、履歴と旧配布物を保持しました。公開取込プレビュー `e7e0fbd0e7dc405d21e8bb44fe4282a3651ac15a` の固定参照20件を初版へ引き継ぎ、Inventory Profiles Next (495267) と libIPN (679177) のみをサーバーから除外しています。独自 config、world、接続先、認証情報は含みません。Shimae の MOD・サーバー設定・提出対象は取り込みません。
 
 旧タグ `okd-server-modpack-import-preview-20261006-e7e0fbd` と `preview-create-client-20261006-9f7671a` は保存しています。仮版 `0.0.0-local.20260913` は正式提出用に使いません。

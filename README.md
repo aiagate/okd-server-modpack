@@ -19,4 +19,4 @@ Create を中心に、工場の自動化、飛行する装置づくり、素材�
 - [開発・ビルド手順](docs/development.md)
 - [公開手順](docs/publishing.md)
 
-配布ツールは Shimae Server Modpack の MIT ライセンスの実装を基にしています。MIT の対象はライセンス表示で対象となるスクリプト・文書・独自著作物です。
+MIT の対象は [LICENSE](LICENSE) に記載されたスクリプト・文書・独自著作物です。
