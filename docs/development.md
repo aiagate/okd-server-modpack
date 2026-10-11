@@ -13,4 +13,6 @@ python3 scripts/native_pack.py --output /tmp/okd-build --packwiz /tmp/okd-tools/
 python3 scripts/publish_pair.py --client /tmp/okd-build/okd-server-modpack-0.0.1.zip --client-receipt /tmp/okd-build/client.json --server /tmp/okd-build/okd-server-modpack-0.0.1-serverpack.zip --server-receipt /tmp/okd-build/server.json --receipt /tmp/okd-build/plan.json
 ```
 
+新ビルドの source commit receipt を追加するには `python3 scripts/published_pack.py --output /tmp/okd-build --record-build` を実行します。CI はこれを自動実行します。公開済み ZIP の読み取り取得は `python3 scripts/published_pack.py --output /tmp/okd-saved-release` です。checkout は元のタグ commit を含む履歴が必要です。
+
 出力先は未作成のディレクトリを使います。通常は CI / Validate がテスト、固定ツール、両 ZIP の検証、独立再ビルド比較、artifact 保存を行います。MOD JAR、ZIP、world、私的資料を Git に追加しません。`project_id: null` は対象未確定を表し、オフラインビルドのみ可能です。実提出は未設定の対象を拒否します。

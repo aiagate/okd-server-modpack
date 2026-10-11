@@ -40,8 +40,9 @@ runs:
       run: |
         set -euo pipefail
         python3 scripts/native_pack.py --output "$BUILD_OUTPUT" --packwiz "$RUNNER_TEMP/tools/packwiz"
+        python3 scripts/published_pack.py --output "$BUILD_OUTPUT" --record-build
         VERSION=$(python3 -c 'import json; print(json.load(open("pack/release.json"))["version"])')
         CLIENT_ZIP="$BUILD_OUTPUT/okd-server-modpack-${VERSION}.zip"
         SERVER_ZIP="$BUILD_OUTPUT/okd-server-modpack-${VERSION}-serverpack.zip"
-        python3 scripts/publish_pair.py --client "$CLIENT_ZIP" --client-receipt "$BUILD_OUTPUT/client.json" --server "$SERVER_ZIP" --server-receipt "$BUILD_OUTPUT/server.json" --receipt "$BUILD_OUTPUT/plan.json"
+        python3 scripts/publish_pair.py --client "$CLIENT_ZIP" --client-receipt "$BUILD_OUTPUT/client.json" --server "$SERVER_ZIP" --server-receipt "$BUILD_OUTPUT/server.json" --release-receipt "$BUILD_OUTPUT/github-release-receipt.json" --receipt "$BUILD_OUTPUT/plan.json"
         echo "client_zip=$CLIENT_ZIP" >> "$GITHUB_OUTPUT"

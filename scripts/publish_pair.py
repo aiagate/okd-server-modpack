@@ -250,7 +250,7 @@ def verify_existing_client(file_id, project_id, client):
                  'existing CurseForge client bytes differ from verified client ZIP')
 
 
-def publish_github(client, server, version, client_sha, server_sha):
+def publish_github(client, server, version, client_sha, server_sha, receipt_paths=()):
     tag = 'v' + version
     try:
         raw = subprocess.check_output(['gh', 'release', 'view', tag, '--repo', REPOSITORY,
@@ -272,7 +272,13 @@ def publish_github(client, server, version, client_sha, server_sha):
         except (subprocess.CalledProcessError, KeyError):
             raise release.Invalid('GitHub release creation not confirmed; inspect before retry') from None
     assets = release.parse_json(raw)['assets']
-    for path, expected in ((client, client_sha), (server, server_sha)):
+    pairs = [(client, client_sha), (server, server_sha)]
+    for path in receipt_paths:
+        release.need(path.name in ('client.json', 'server.json', 'github-release-receipt.json') and
+                     path.is_file() and not path.is_symlink() and path.stat().st_size <= 2 * 1024 * 1024,
+                     'invalid provenance receipt upload')
+        pairs.append((path, hashlib.sha256(path.read_bytes()).hexdigest()))
+    for path, expected in pairs:
         existing = [a for a in assets if a['name'] == path.name]
         if existing:
             release.need(len(existing) == 1 and existing[0]['size'] == path.stat().st_size and
@@ -285,6 +291,18 @@ def publish_github(client, server, version, client_sha, server_sha):
             except subprocess.CalledProcessError:
                 raise release.Invalid('GitHub asset upload not confirmed; inspect before retry') from None
 
+    # All durable provenance must exist with exact bytes BEFORE any CF claim/POST.
+    try:
+        saved = release.parse_json(subprocess.check_output(['gh', 'release', 'view', tag,
+            '--repo', REPOSITORY, '--json', 'assets'], stderr=subprocess.PIPE))['assets']
+    except subprocess.CalledProcessError:
+        raise release.Invalid('GitHub saved assets verification failed; no CurseForge POST') from None
+    for path, expected in pairs:
+        matches = [a for a in saved if a['name'] == path.name]
+        release.need(len(matches) == 1 and matches[0]['size'] == path.stat().st_size and
+                     matches[0].get('digest') == 'sha256:' + expected,
+                     'published ZIP/source receipt upload not confirmed; no CurseForge POST')
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -292,6 +310,8 @@ def main():
     parser.add_argument('--client', type=Path, required=True)
     parser.add_argument('--server', type=Path, required=True)
     parser.add_argument('--server-receipt', type=Path, required=True)
+    parser.add_argument('--release-receipt', type=Path)
+    parser.add_argument('--published-release', action='store_true')
     parser.add_argument('--state', type=Path, default=Path('publication-state.json'))
     parser.add_argument('--receipt', type=Path, required=True)
     parser.add_argument('--submit', action='store_true')
@@ -302,6 +322,14 @@ def main():
     try:
         import native_pack
         inputs = native_pack.load_inputs()
+        provenance = None
+        if args.release_receipt:
+            import published_pack
+            provenance = release.parse_json(args.release_receipt.read_bytes())
+            inputs = published_pack.validate_receipt(provenance, args.client,
+                release.parse_json(args.client_receipt.read_bytes()), args.server,
+                release.parse_json(args.server_receipt.read_bytes()), published=args.published_release)
+        release.need(not args.published_release or provenance is not None, 'published source receipt required')
         meta, refs, overrides, source_sha = inputs
         client_sha = native_pack.verify_client(args.client,
             release.parse_json(args.client_receipt.read_bytes()), inputs)
@@ -314,7 +342,9 @@ def main():
         identity = fingerprint(configs['client']['project_id'], lock['version'], client_sha, server['sha256'])
         known = release.parse_json(args.state.read_bytes()) if args.state.exists() else None
         if not args.submit:
-            dry = dict(schema_version=1, **identity, status='dry_run_no_network', mode=args.mode,
+            dry = dict(schema_version=1, **identity, status='dry_run_read_only' if args.published_release else 'dry_run_no_network', mode=args.mode,
+                       release_source_commit=provenance.get('source_commit') if provenance else None,
+                       published_release_bytes=args.published_release,
                        published_version_blocks_changed_bytes=bool(known and known.get('version') == lock['version'] and any(known.get(k) != v for k,v in identity.items())),
                        existing_state_matches=bool(known and all(known.get(k) == v for k,v in identity.items())),
                        client_metadata=release.metadata(configs['client'], Path('CHANGELOG.md').read_text()),
@@ -323,6 +353,7 @@ def main():
                 json.dump(dry, handle, indent=2); handle.write('\n')
             print('DRY RUN: both ZIPs verified; no network mutation or upload.')
             return 0
+        release.need(provenance is not None, 'exact release source/ZIP receipt required before submission')
         release.need(release.positive(configs['client']['project_id']) and configs['client']['project_id'] != 1733082, 'actual OKD project_id is required before submission')
         release.need(os.environ.get('GITHUB_REF') == 'refs/heads/main', 'submission is main-only')
         release.need(os.environ.get('CURSEFORGE_SUBMISSION_ENABLED') == 'true', 'submission is disabled')
@@ -339,7 +370,8 @@ def main():
                 json.dump(dict(schema_version=1, **identity, status='authentication_preflight_failed',
                     audit=audit), handle, indent=2)
             raise release.Invalid('read-only Upload API audit failed; no publication attempted')
-        publish_github(args.client, args.server, lock['version'], client_sha, server['sha256'])
+        publish_github(args.client, args.server, lock['version'], client_sha, server['sha256'],
+            receipt_paths=(args.client_receipt, args.server_receipt, args.release_receipt))
         result = publish(args.client, args.server, configs['client'], lock['version'],
             Path('CHANGELOG.md').read_text(), identity, known,
             GitHubJournal('v'+lock['version'], identity), mode=args.mode,

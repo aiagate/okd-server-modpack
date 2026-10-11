@@ -1,5 +1,6 @@
 """Submission state tests use fake journals and fake POSTs; no API calls."""
 import json
+import hashlib
 from pathlib import Path
 import sys
 import tempfile
@@ -116,9 +117,11 @@ class AuthenticationPreflightTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp); source=root/'server.json'; source.write_text(json.dumps({'sha256':'b'*64}))
             (root/'client.json').write_text('{}')
+            (root/'github-release-receipt.json').write_text('{}')
             receipt=root/'receipt.json'
             (root/'client.json').write_text('{}')
-            args=['publish_pair.py','--client-receipt',str(root/'client.json'),'--client',str(root/'client.zip'),'--server',str(root/'server.zip'),
+            (root/'github-release-receipt.json').write_text('{}')
+            args=['publish_pair.py','--release-receipt',str(root/'github-release-receipt.json'),'--client-receipt',str(root/'client.json'),'--client',str(root/'client.zip'),'--server',str(root/'server.zip'),
                 '--server-receipt',str(source),'--receipt',str(receipt),'--state',str(root/'absent.json'),'--submit']
             config=dict(CONFIG)
             with patch.object(sys,'argv',args), patch.dict('os.environ',{
@@ -126,6 +129,7 @@ class AuthenticationPreflightTests(unittest.TestCase):
                     'CURSEFORGE_API_TOKEN':'synthetic-token'}), \
                  patch('native_pack.load_inputs',return_value=({'version':'synthetic-next'}, {}, {}, 'source')), patch('native_pack.runtime_config',return_value=config), \
                  patch('native_pack.verify_client',return_value='a'*64), \
+                 patch('published_pack.validate_receipt',return_value=({'version':'synthetic-next'}, {}, {}, 'source')), \
                  patch('native_pack.policy',return_value={}), \
                  patch('serverpack.verify_prepared'), \
                  patch('diagnose_api.audit',return_value={'status':'unconfirmed','http_status':400,'category':'http_non_success'}), \
@@ -153,7 +157,8 @@ class VersionVariantPublicationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp); source=root/'server.json'; source.write_text(json.dumps({'sha256':'b'*64}))
             (root/'client.json').write_text('{}')
-            args=['publish_pair.py','--client-receipt',str(root/'client.json'),'--client',str(root/'client.zip'),'--server',str(root/'server.zip'),
+            (root/'github-release-receipt.json').write_text('{}')
+            args=['publish_pair.py','--release-receipt',str(root/'github-release-receipt.json'),'--client-receipt',str(root/'client.json'),'--client',str(root/'client.zip'),'--server',str(root/'server.zip'),
                 '--server-receipt',str(source),'--receipt',str(root/'receipt.json'),
                 '--state',str(root/'absent.json'),'--submit']
             report={'status':'read_complete','category':'all_metadata_names_present_with_variants','missing_names':[]}
@@ -162,6 +167,7 @@ class VersionVariantPublicationTests(unittest.TestCase):
                     'CURSEFORGE_API_TOKEN':'synthetic-token'}), \
                  patch('native_pack.load_inputs',return_value=({'version':'synthetic-next'}, {}, {}, 'source')), patch('native_pack.runtime_config',return_value=dict(CONFIG)), \
                  patch('native_pack.verify_client',return_value='a'*64), \
+                 patch('published_pack.validate_receipt',return_value=({'version':'synthetic-next'}, {}, {}, 'source')), \
                  patch('native_pack.policy',return_value={}), \
                  patch('serverpack.verify_prepared'), \
                  patch('diagnose_api.audit',return_value=report), \
@@ -169,5 +175,22 @@ class VersionVariantPublicationTests(unittest.TestCase):
                  patch.object(p,'publish',return_value={'status':'synthetic-no-network'}) as publisher:
                 self.assertEqual(p.main(),0)
             github.assert_called_once(); publisher.assert_called_once()
+
+class DurableProvenanceTests(unittest.TestCase):
+    def test_zip_and_all_source_receipts_saved_and_digest_checked_before_post(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp); paths=[]
+            for name in ('client.zip','server.zip','client.json','server.json','github-release-receipt.json'):
+                path=root/name; path.write_bytes(name.encode()); paths.append(path)
+            assets=[dict(name=path.name,size=path.stat().st_size,digest='sha256:'+hashlib.sha256(path.read_bytes()).hexdigest()) for path in paths]
+            with patch.object(p.subprocess,'check_output',side_effect=[b'{"assets":[]}',json.dumps({'assets':assets}).encode()]), \
+                 patch.object(p.subprocess,'run') as upload:
+                p.publish_github(paths[0],paths[1],'0.0.2',assets[0]['digest'][7:],assets[1]['digest'][7:],paths[2:])
+                self.assertEqual(upload.call_count,5)
+                self.assertTrue(all('--clobber' not in c.args[0] for c in upload.call_args_list))
+            assets[-1]['digest']='sha256:'+'f'*64
+            with patch.object(p.subprocess,'check_output',side_effect=[b'{"assets":[]}',json.dumps({'assets':assets}).encode()]), \
+                 patch.object(p.subprocess,'run'), self.assertRaises(release.Invalid):
+                p.publish_github(paths[0],paths[1],'0.0.2',assets[0]['digest'][7:],assets[1]['digest'][7:],paths[2:])
 
 if __name__=='__main__': unittest.main()
