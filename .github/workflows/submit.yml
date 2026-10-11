@@ -3,10 +3,15 @@ on:
   workflow_dispatch:
     inputs:
       submit:
-        description: 'Build ZIPs, then await Environment approval before submitting these exact artifacts'
+        description: 'Verify exact saved ZIPs, then await Environment approval before submitting'
         type: boolean
         default: false
         required: true
+      artifact_source:
+        description: 'Reuse published bytes for resume; build only for a new version without an existing Release'
+        type: choice
+        options: [published_release, new_build]
+        default: published_release
       mode:
         description: 'Submit both files or only server with recorded/verified client'
         type: choice
@@ -42,6 +47,7 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
+          fetch-depth: 0
       - name: Require reviewer approval for publication
         if: inputs.submit
         env:
@@ -56,16 +62,37 @@ jobs:
           if not any(rule.get('type') == 'required_reviewers' and rule.get('reviewers') for rule in rules):
               raise SystemExit('Configure required reviewers on the curseforge Environment before submitting.')
           PY
-      - name: Build and verify modpack
+      - name: Require a new version before rebuilding
+        if: inputs.artifact_source == 'new_build'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/published_pack.py --require-new-version
+      - name: Build and verify a new version
+        if: inputs.artifact_source == 'new_build'
         id: verify
         uses: ./.github/actions/build-pack
         with:
           output-directory: ${{ runner.temp }}/verified
+      - name: Acquire exact published release without rebuilding
+        if: inputs.artifact_source == 'published_release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s tests -v
+          python3 scripts/published_pack.py --output "$RUNNER_TEMP/verified"
+          VERSION=$(python3 -c 'import json; print(json.load(open("pack/release.json"))["version"])')
+          python3 scripts/publish_pair.py --client "$RUNNER_TEMP/verified/okd-server-modpack-${VERSION}.zip" --client-receipt "$RUNNER_TEMP/verified/client.json" --server "$RUNNER_TEMP/verified/okd-server-modpack-${VERSION}-serverpack.zip" --server-receipt "$RUNNER_TEMP/verified/server.json" --release-receipt "$RUNNER_TEMP/verified/github-release-receipt.json" --published-release --receipt "$RUNNER_TEMP/verified/plan.json"
+      - name: Expose exact selected client filename
+        id: selected
+        run: |
+          VERSION=$(python3 -c 'import json; print(json.load(open("pack/release.json"))["version"])')
+          echo "client_zip=$RUNNER_TEMP/verified/okd-server-modpack-${VERSION}.zip" >> "$GITHUB_OUTPUT"
       - name: Save exact client ZIP
         id: client
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          path: ${{ steps.verify.outputs.client_zip }}
+          path: ${{ steps.selected.outputs.client_zip }}
           archive: false
           retention-days: 14
           if-no-files-found: error
@@ -86,6 +113,8 @@ jobs:
             ${{ runner.temp }}/verified/server.json
             ${{ runner.temp }}/verified/plan.json
             ${{ runner.temp }}/verified/client.json
+            ${{ runner.temp }}/verified/github-release-receipt.json
+            ${{ runner.temp }}/verified/acquisition.json
           retention-days: 14
           if-no-files-found: error
       - name: Link exact artifacts for approval
@@ -96,7 +125,9 @@ jobs:
         run: |
           {
             echo '## Review these artifacts before approving the curseforge deployment'
-            echo "Source commit: $GITHUB_SHA"
+            echo "Workflow commit: $GITHUB_SHA"
+            RELEASE_SOURCE=$(python3 -c 'import json, os; print(json.load(open(os.path.join(os.environ["RUNNER_TEMP"], "verified", "github-release-receipt.json")))["source_commit"])')
+            echo "Release source commit: $RELEASE_SOURCE"
             echo "- [Client ZIP]($CLIENT_URL)"
             echo "- [Server ZIP]($SERVER_URL)"
             echo "- [Validation reports]($REPORT_URL)"
@@ -115,6 +146,7 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
+          fetch-depth: 0
       - name: Require this run's artifact IDs
         env:
           CLIENT_ID: ${{ needs.preflight.outputs.client_artifact_id }}
@@ -142,17 +174,19 @@ jobs:
           MODE: ${{ inputs.mode }}
           EXISTING_CLIENT: ${{ inputs.existing_client_file_id }}
           MANUAL_RELEASE: ${{ inputs.manual_release }}
+          ARTIFACT_SOURCE: ${{ inputs.artifact_source }}
         run: |
           set -euo pipefail
           VERSION=$(python3 -c 'import json; print(json.load(open("pack/release.json"))["version"])')
           CLIENT_NAME="okd-server-modpack-${VERSION}.zip"
           EXTRA=()
+          if [[ "$ARTIFACT_SOURCE" == published_release ]]; then EXTRA+=(--published-release); fi
           if [[ -n "$EXISTING_CLIENT" ]]; then
             [[ "$EXISTING_CLIENT" =~ ^[1-9][0-9]*$ ]] || exit 1
             EXTRA+=(--existing-client-file-id "$EXISTING_CLIENT")
           fi
           if [[ "$MANUAL_RELEASE" == true ]]; then EXTRA+=(--manual-release); fi
-          python3 scripts/publish_pair.py --client "$RUNNER_TEMP/submission/$CLIENT_NAME" --client-receipt "$RUNNER_TEMP/reports/client.json" --server "$RUNNER_TEMP/submission/okd-server-modpack-${VERSION}-serverpack.zip" --server-receipt "$RUNNER_TEMP/reports/server.json" --receipt "$RUNNER_TEMP/submission-result.json" --mode "$MODE" "${EXTRA[@]}" --submit
+          python3 scripts/publish_pair.py --client "$RUNNER_TEMP/submission/$CLIENT_NAME" --client-receipt "$RUNNER_TEMP/reports/client.json" --server "$RUNNER_TEMP/submission/okd-server-modpack-${VERSION}-serverpack.zip" --server-receipt "$RUNNER_TEMP/reports/server.json" --release-receipt "$RUNNER_TEMP/reports/github-release-receipt.json" --receipt "$RUNNER_TEMP/submission-result.json" --mode "$MODE" "${EXTRA[@]}" --submit
       - name: Preserve receipt even if acceptance is uncertain
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
