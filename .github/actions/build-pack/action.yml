@@ -1,0 +1,47 @@
+name: Build and verify modpack
+description: Test repository sources and generate verified client/server ZIPs with pinned tools
+inputs:
+  output-directory:
+    description: Absolute path to a new output directory
+    required: true
+outputs:
+  client_zip:
+    description: Absolute path to the verified client ZIP
+    value: ${{ steps.build.outputs.client_zip }}
+runs:
+  using: composite
+  steps:
+    - name: Test validation and publication failure handling
+      shell: bash
+      run: |
+        python3 -m unittest discover -s tests -v
+        python3 -m compileall -q scripts tests
+    - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+      with:
+        go-version: '1.27.2'
+        cache: false
+    - name: Build pinned standard exporter
+      shell: bash
+      run: GOBIN="$RUNNER_TEMP/tools" go install github.com/packwiz/packwiz@v0.0.0-20260218225342-dfd8b68a4796
+    - name: Reject committed distribution binaries
+      shell: bash
+      run: |
+        python3 - <<'PY'
+        import subprocess
+        paths = subprocess.check_output(['git', 'ls-files', '-z']).split(b'\0')
+        if any(p.lower().endswith((b'.zip', b'.jar', b'.mrpack')) for p in paths):
+            raise SystemExit('Distribution/tool binaries do not belong in Git.')
+        PY
+    - name: Generate and verify repository-owned client/server ZIPs
+      id: build
+      shell: bash
+      env:
+        BUILD_OUTPUT: ${{ inputs.output-directory }}
+      run: |
+        set -euo pipefail
+        python3 scripts/native_pack.py --output "$BUILD_OUTPUT" --packwiz "$RUNNER_TEMP/tools/packwiz"
+        VERSION=$(python3 -c 'import json; print(json.load(open("pack/release.json"))["version"])')
+        CLIENT_ZIP="$BUILD_OUTPUT/okd-server-modpack-${VERSION}.zip"
+        SERVER_ZIP="$BUILD_OUTPUT/okd-server-modpack-${VERSION}-serverpack.zip"
+        python3 scripts/publish_pair.py --client "$CLIENT_ZIP" --client-receipt "$BUILD_OUTPUT/client.json" --server "$SERVER_ZIP" --server-receipt "$BUILD_OUTPUT/server.json" --receipt "$BUILD_OUTPUT/plan.json"
+        echo "client_zip=$CLIENT_ZIP" >> "$GITHUB_OUTPUT"

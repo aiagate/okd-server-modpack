@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "version": "0.0.1",
+  "name": "OKD Server Modpack",
+  "author": "aiagate",
+  "minecraft_version": "1.21.1",
+  "loader_id": "neoforge-21.1.250",
+  "project_id": null,
+  "game_version_names": [
+    "1.21.1",
+    "NeoForge",
+    "Client"
+  ],
+  "release_type": "release"
+}

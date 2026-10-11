@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "exporter": "packwiz",
+  "module_version": "v0.0.0-20260218225342-dfd8b68a4796",
+  "go_version": "1.27.2",
+  "migration_version": "0.0.1",
+  "source_commit": "e7e0fbd0e7dc405d21e8bb44fe4282a3651ac15a",
+  "source_tag": "okd-server-modpack-import-preview-20261006-e7e0fbd",
+  "source_kind": "public-pinned-reference-preview",
+  "runtime_verified": false,
+  "reference_sha256": {
+    "client": "8689d097a8cc652e51c49b1dba4e9a22cdfc751ac966648b40615e89a587a84b",
+    "server": "b3b469f8582c64b88b17d001040d074022501d76a271d154edb1aa02f1f9a266"
+  },
+  "override_sha256": {
+    "overrides/LICENSE-OKD.txt": "1a67527c710f04ff0e375bd8e6115c9d6c9b4a7aafc9da8bcca4c3a6c7210f26",
+    "overrides/THIRD-PARTY-NOTICES.txt": "8048a33dee54f20207bc25488f7667942bf2f8d58d21a005b72805594b90f721"
+  }
+}

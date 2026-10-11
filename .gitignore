@@ -17,4 +17,3 @@ server.properties
 secrets/
 credentials*
 *.zip
-!packs/*.zip

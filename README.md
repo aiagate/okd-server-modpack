@@ -1,48 +1,25 @@
-# CurseForge ModPackを検証し、手動で提出する
+# OKD Server Modpack
 
-CurseForgeアプリでexportしたZIPを、そのままGitで管理するひな形です。Python 3.12以降の標準ライブラリだけで検証します。初期状態にはpack本体・投稿トークン・有効な提出設定は含まれません。
+Minecraft **1.21.1 / NeoForge 21.1.250** 向けの Modpack です。固定 MOD 参照20件のクライアント ZIP と、クライアント専用2件を除く18件の軽量サーバーパックを配布します。
 
-## 初回設定はアプリのexportから始める
+## ダウンロード
 
-1. CurseForge上の初回プロジェクトは自分で作成し、project IDを控えます。
-2. アプリで配布専用のプロファイルを用意し、必要なファイルだけを選んでexportします。生成されたmanifestは手編集しません。このスクリプトもmanifestの作成・修正・ZIPの再梱包は行いません。
-3. ZIPをGitに追加する**前に**、全収録ファイルを確認します。ワールド、options.txt、ログ、認証情報、個人用サーバー情報を取り除く必要があれば、元プロファイルを修正してアプリから再exportします。設定ファイル内のドメイン名や任意の秘密値は完全には自動判定できないため、人による内容確認が必須です。
-4. 確認したZIPを `packs/pack.zip` に置きます。`packs/` には現行ZIPを1つだけ置き、旧版はGit履歴に残します。
-5. `cp release.example.json release.json` で設定を作り、project ID、export内のMinecraft版とloader ID、表示名を入力します。`game_version_names` はMinecraft版、対応Loader名、`Client` の3つです。公式Game Versions API `/api/game/versions` で正式名を確認してください。実在する版番号はこの例に埋めていません。
-6. `sha256sum packs/pack.zip` の値を `reviewed_sha256` に記入します。この値は内容レビュー済みのZIPを特定するためのものです。レビューせずに値だけ更新しないでください。
-7. `CHANGELOG.md` を今回の変更内容に置き換えます。その全文が提出用変更履歴になります。
+初版 [0.0.1](https://github.com/aiagate/okd-server-modpack/releases/tag/v0.0.1) のクライアントは `okd-server-modpack-0.0.1.zip`、サーバー導入用は `okd-server-modpack-0.0.1-serverpack.zip` です。公開状況と SHA256 は Release の実ファイル・receipt を確認してください。
 
-```bash
-python3 -m unittest discover -s tests -v
-python3 scripts/release.py --zip packs/pack.zip
-```
+クライアント ZIP を CurseForge App にインポートすると、指定 MOD が取得されます。サーバー ZIP は MOD JAR や Java を含む完成済みサーバーではありません。Docker の標準インストーラーへ渡す導入資料です。[サーバー導入手順](docs/server-setup.md)を参照してください。
 
-既定は通信しないdry-runです。project ID、設定、変更履歴、ZIPが未設定なら停止します。成功後にZIP・`release.json`・変更履歴をコミットしてください。`.gitignore` はZIPの内部を検査しません。秘密を一度コミットするとGit履歴に残るため、事前検査が必要です。
+## 構成の出所と検証範囲
 
-## 投稿はmainから手動実行する
+正本は `pack/` の固定参照と配布文書です。初版は公開取込プレビュー `e7e0fbd0e7dc405d21e8bb44fe4282a3651ac15a` の20件を保持しています。実環境の完全な最新構成を取得したものではありません。独自 config、world、接続先、認証情報は含めません。
 
-リポジトリは非公開で運用します。GitHub Actionsの `Manual CurseForge submission` をmainから実行し、まず `submit=false` で確認します。PRとpushの検証workflowは投稿secretを参照しません。
+Inventory Profiles Next (`495267`) と libIPN (`679177`) はクライアント専用としてサーバーから除外します。その他の file ID、Minecraft、NeoForge は変更していません。[MOD 参照表](docs/mods.tsv)に出所と当時の Environment・ライセンス表示を保存しています。
 
-実提出を始めるときだけ、自分で発行した投稿用トークンをGitHub Actions Secret `CURSEFORGE_API_TOKEN` に登録し、`submit=true` を選びます。コード・設定・ZIPをレビューした信頼できるmainだけを使ってください。write権限を持つ人はworkflowを書き換えられるため、共同編集者を限定し、運用に応じてmainの保護や環境承認を追加してください。ひな形の作成ではSecrets登録や保護設定の変更は行いません。
+元の参照構成について Windows の取込・起動・サーバー参加成功のユーザー報告があります。今回の生成 ZIP と専用サーバーの実機起動は CI の静的検証範囲外です。CurseForge の OKD project は未確定で、CurseForge 提出・審査 Approved・Server Pack 区分は未確認です。GitHub Release の公開を CurseForge 審査完了と扱いません。
 
-投稿ステップ内でZIPをメモリに一度読み込み、検証した同じバイト列を1回だけ送信します。送信先は固定のHTTPSホスト、トークンは `X-Api-Token` ヘッダーだけに設定します。リダイレクト追従・自動再送・応答本文のログ出力はありません。GitHub Actionsの再実行も再投稿になるため、失敗やタイムアウト時は作者画面で受付状況を確認してから判断してください。同時投稿は直列化しますが、重複投稿を永続的に防ぐ仕組みではありません。
+## 開発と公開
 
-APIのfile ID取得は受付成功を意味し、審査完了ではありません。`isMarkedForManualRelease=true` で提出するため、承認後の公開操作も作者画面で行います。サーバーパック提出・Minecraftサーバーへの配置は扱いません。
+- [開発手順](docs/development.md)：正本、固定 exporter、テスト、ビルドと CI。
+- [公開手順](docs/publishing.md)：対象設定、承認、正確な artifact、二重提出防止と公開照合。
+- [変更履歴](CHANGELOG.md)：初版の内容と旧プレビューの保全。
 
-## 自動検査には保守的な制限がある
-
-検査対象はZIP構造、zip-slip、重複パス、symlink等の特殊ファイル、暗号化、CRC、サイズ、manifestの基本構造、Minecraft版・Loaderと提出メタデータの一致です。ZIPは展開しません。
-
-このリポジトリ独自の上限は圧縮90 MiB、展開256 MiB、1ファイル32 MiB、1万エントリ、圧縮率200倍です。CurseForge公式の上限を示すものではありません。GitHubへの通常Git保存を想定しています。
-
-初期版ではoverrideはUTF-8テキストだけを許可し、JAR・入れ子アーカイブ・バイナリを拒否します。URL、IPアドレス、秘密値らしい記述も拒否するため、正当な公開URL等で停止する場合があります。必要なら対象ファイルと配布権を確認し、検証方針を明示的に変更してください。検査を通すためにmanifestを加工してはいけません。
-
-自動検査はアプリ生成の真正性、任意の秘密値、全MODの掲載状態・互換性・配布許可、実ゲームでの起動を保証しません。MODの参照先・Loaderタグ・配布権は提出前に人が確認し、アプリへの再importと起動試験を行ってください。`tests/` のmanifestは検査用の合成fixtureで、配布用exportではありません。
-
-## 参照した公式仕様
-
-2026-10-04確認。
-
-- [CurseForge Upload API](https://support.curseforge.com/support/solutions/articles/9000197321-curseforge-upload-api): multipartのmetadata/file、認証ヘッダー、版名指定、受付file ID、手動公開設定。
-- [Moderation Policies](https://support.curseforge.com/support/solutions/articles/9000197279-project-and-modpack-moderation-policies): アプリ生成形式、manifest手編集禁止、Loaderの整合性、収録MODの配布条件。審査に合わせたプロジェクト説明や画像の用意も必要です。
-- [GitHub Actions secure use](https://docs.github.com/en/actions/reference/security/secure-use): 最小権限、Actionの完全SHA固定、信頼できるコードだけにSecretsを渡す運用。
+既存 `minecraft-modpack-release` を public のまま改名しました。旧タグと Release assets は履歴として残しています。Shimae の設定・MOD・提出対象は取り込みません。検証・提出プログラムは Shimae の MIT ライセンスの実装を OKD 用に適用し、元の著作権表示を保持しています。
