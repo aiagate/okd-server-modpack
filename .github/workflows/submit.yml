@@ -1,12 +1,25 @@
-name: Manual CurseForge submission
+name: Release / Submit
 on:
   workflow_dispatch:
     inputs:
       submit:
-        description: 'Actually submit to CurseForge (false = download and validate only)'
+        description: 'Build ZIPs, then await Environment approval before submitting these exact artifacts'
         type: boolean
         default: false
         required: true
+      mode:
+        description: 'Submit both files or only server with recorded/verified client'
+        type: choice
+        options: [client_server, server_only]
+        default: client_server
+      existing_client_file_id:
+        description: 'Optional publicly approved client ID for recovery (exact bytes required)'
+        type: string
+        default: ''
+      manual_release:
+        description: 'Hold accepted files for manual publication after moderation'
+        type: boolean
+        default: true
 permissions:
   contents: read
 concurrency:
@@ -15,68 +28,143 @@ concurrency:
 jobs:
   preflight:
     if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      actions: read # Read Environment protection rules before requesting approval
     outputs:
-      export_artifact_id: ${{ steps.export.outputs.artifact-id }}
+      client_artifact_id: ${{ steps.client.outputs.artifact-id }}
+      server_artifact_id: ${{ steps.server.outputs.artifact-id }}
+      report_artifact_id: ${{ steps.report.outputs.artifact-id }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
-      - run: python3 -m unittest discover -s tests -v
-      - run: python3 -m compileall -q scripts tests
-      - name: Fetch reviewed Release asset and validate offline
-        shell: bash
+      - name: Require reviewer approval for publication
+        if: inputs.submit
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          mkdir "$RUNNER_TEMP/verified-export"
-          python3 scripts/fetch_export.py --output "$RUNNER_TEMP/verified-export/okd-server-modpack.zip"
-          python3 scripts/release.py --zip "$RUNNER_TEMP/verified-export/okd-server-modpack.zip" --receipt "$RUNNER_TEMP/verified-export/preflight.json" --commit "$GITHUB_SHA"
-      - name: Keep verified export and receipt for this run
-        id: export
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+          gh api "repos/$GITHUB_REPOSITORY/environments/curseforge" --jq '.protection_rules' > "$RUNNER_TEMP/protection-rules.json"
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          rules = json.loads((Path(os.environ['RUNNER_TEMP']) / 'protection-rules.json').read_text())
+          if not any(rule.get('type') == 'required_reviewers' and rule.get('reviewers') for rule in rules):
+              raise SystemExit('Configure required reviewers on the curseforge Environment before submitting.')
+          PY
+      - name: Build and verify modpack
+        id: verify
+        uses: ./.github/actions/build-pack
         with:
-          name: okd-server-modpack-verified-export-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/verified-export/
-          compression-level: 0
-          retention-days: 30
+          output-directory: ${{ runner.temp }}/verified
+      - name: Save exact client ZIP
+        id: client
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          path: ${{ steps.verify.outputs.client_zip }}
+          archive: false
+          retention-days: 14
           if-no-files-found: error
+      - name: Save exact server setup ZIP
+        id: server
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          path: ${{ runner.temp }}/verified/*-serverpack.zip
+          archive: false
+          retention-days: 14
+          if-no-files-found: error
+      - name: Save sanitized reports
+        id: report
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: okd-preflight-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/verified/server.json
+            ${{ runner.temp }}/verified/plan.json
+            ${{ runner.temp }}/verified/client.json
+          retention-days: 14
+          if-no-files-found: error
+      - name: Link exact artifacts for approval
+        env:
+          CLIENT_URL: ${{ steps.client.outputs.artifact-url }}
+          SERVER_URL: ${{ steps.server.outputs.artifact-url }}
+          REPORT_URL: ${{ steps.report.outputs.artifact-url }}
+        run: |
+          {
+            echo '## Review these artifacts before approving the curseforge deployment'
+            echo "Source commit: $GITHUB_SHA"
+            echo "- [Client ZIP]($CLIENT_URL)"
+            echo "- [Server ZIP]($SERVER_URL)"
+            echo "- [Validation reports]($REPORT_URL)"
+            echo 'Approval submits these exact artifacts; no rebuild is performed.'
+          } >> "$GITHUB_STEP_SUMMARY"
   submit:
     needs: preflight
-    if: ${{ github.ref == 'refs/heads/main' && inputs.submit }}
+    if: github.ref == 'refs/heads/main' && inputs.submit
     environment: curseforge
+    permissions:
+      contents: write # Release ZIPs + immutable submission journal
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
-      - name: Require an exact artifact ID from preflight
+      - name: Require this run's artifact IDs
         env:
-          VERIFIED_ARTIFACT_ID: ${{ needs.preflight.outputs.export_artifact_id }}
-        run: '[[ "$VERIFIED_ARTIFACT_ID" =~ ^[1-9][0-9]*$ ]]'
-      - name: Download only the verified artifact from this run
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+          CLIENT_ID: ${{ needs.preflight.outputs.client_artifact_id }}
+          SERVER_ID: ${{ needs.preflight.outputs.server_artifact_id }}
+          REPORT_ID: ${{ needs.preflight.outputs.report_artifact_id }}
+        run: |
+          [[ "$CLIENT_ID" =~ ^[1-9][0-9]*$ && "$SERVER_ID" =~ ^[1-9][0-9]*$ && "$REPORT_ID" =~ ^[1-9][0-9]*$ ]]
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          artifact-ids: ${{ needs.preflight.outputs.export_artifact_id }}
-          path: ${{ runner.temp }}/verified-export/
+          artifact-ids: ${{ needs.preflight.outputs.client_artifact_id }},${{ needs.preflight.outputs.server_artifact_id }}
+          path: ${{ runner.temp }}/submission/
+          skip-decompress: true
           merge-multiple: true
-      - name: Validate and submit identical bytes once
+          digest-mismatch: error
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          artifact-ids: ${{ needs.preflight.outputs.report_artifact_id }}
+          path: ${{ runner.temp }}/reports/
+          digest-mismatch: error
+      - name: Recheck exact bytes and publish with durable duplicate prevention
         env:
           CURSEFORGE_SUBMISSION_ENABLED: ${{ vars.CURSEFORGE_SUBMISSION_ENABLED }}
           CURSEFORGE_API_TOKEN: ${{ secrets.CURSEFORGE_API_TOKEN }}
-        shell: bash
+          GH_TOKEN: ${{ github.token }}
+          MODE: ${{ inputs.mode }}
+          EXISTING_CLIENT: ${{ inputs.existing_client_file_id }}
+          MANUAL_RELEASE: ${{ inputs.manual_release }}
         run: |
           set -euo pipefail
-          [[ "$CURSEFORGE_SUBMISSION_ENABLED" == true ]] || { echo 'Configure the curseforge environment before enabling submission.' >&2; exit 1; }
-          python3 scripts/release.py --zip "$RUNNER_TEMP/verified-export/okd-server-modpack.zip" --submit --receipt "$RUNNER_TEMP/submission.json" --commit "$GITHUB_SHA"
-      - name: Keep submission receipt even if acceptance is uncertain
-        if: ${{ always() }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+          VERSION=$(python3 -c 'import json; print(json.load(open("pack/release.json"))["version"])')
+          CLIENT_NAME="okd-server-modpack-${VERSION}.zip"
+          EXTRA=()
+          if [[ -n "$EXISTING_CLIENT" ]]; then
+            [[ "$EXISTING_CLIENT" =~ ^[1-9][0-9]*$ ]] || exit 1
+            EXTRA+=(--existing-client-file-id "$EXISTING_CLIENT")
+          fi
+          if [[ "$MANUAL_RELEASE" == true ]]; then EXTRA+=(--manual-release); fi
+          python3 scripts/publish_pair.py --client "$RUNNER_TEMP/submission/$CLIENT_NAME" --client-receipt "$RUNNER_TEMP/reports/client.json" --server "$RUNNER_TEMP/submission/okd-server-modpack-${VERSION}-serverpack.zip" --server-receipt "$RUNNER_TEMP/reports/server.json" --receipt "$RUNNER_TEMP/submission-result.json" --mode "$MODE" "${EXTRA[@]}" --submit
+      - name: Preserve receipt even if acceptance is uncertain
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
-          name: okd-server-modpack-submission-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/submission.json
-          retention-days: 30
+          name: okd-submission-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/submission-result.json
+          retention-days: 14
           if-no-files-found: warn
+  verify-publication:
+    needs: submit
+    if: github.ref == 'refs/heads/main' && inputs.submit && needs.submit.result == 'success'
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/verify-publication.yml

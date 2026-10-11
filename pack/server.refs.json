@@ -1,18 +1,4 @@
 {
-  "minecraft": {
-    "version": "1.21.1",
-    "modLoaders": [
-      {
-        "id": "neoforge-21.1.250",
-        "primary": true
-      }
-    ]
-  },
-  "manifestType": "minecraftModpack",
-  "manifestVersion": 1,
-  "name": "OKD Server Modpack",
-  "version": "0.0.0-local.20260913",
-  "author": "Local assembly (provisional)",
   "files": [
     {
       "projectID": 947914,
@@ -75,11 +61,6 @@
       "required": true
     },
     {
-      "projectID": 495267,
-      "fileID": 7810574,
-      "required": true
-    },
-    {
       "projectID": 238222,
       "fileID": 8792638,
       "required": true
@@ -92,11 +73,6 @@
     {
       "projectID": 351264,
       "fileID": 8335665,
-      "required": true
-    },
-    {
-      "projectID": 679177,
-      "fileID": 7810552,
       "required": true
     },
     {
@@ -114,6 +90,5 @@
       "fileID": 8673825,
       "required": true
     }
-  ],
-  "overrides": "overrides"
+  ]
 }

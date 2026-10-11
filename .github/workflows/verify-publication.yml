@@ -1,0 +1,41 @@
+name: Release / Verify publication
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version; blank uses repository release metadata'
+        type: string
+        default: ''
+  workflow_call:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  verify:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Test approval and Server Pack classification guards
+        run: python3 -m unittest discover -s tests -v
+      - name: Verify public approval, exact bytes, parent and Server Pack type
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          EXTRA=()
+          if [[ -n "$VERSION" ]]; then EXTRA+=(--version "$VERSION"); fi
+          python3 scripts/verify_publication.py --receipt "$RUNNER_TEMP/publication-verification.json" --wait-seconds 600 "${EXTRA[@]}"
+      - name: Preserve public verification status
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: okd-publication-verification-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/publication-verification.json
+          retention-days: 14
+          if-no-files-found: error

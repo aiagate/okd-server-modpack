@@ -1,0 +1,6 @@
+OKD Server Modpack
+
+Third-party MODs are referenced by pinned CurseForge project and file IDs.
+No MOD JARs are bundled. Each MOD remains under its own author license.
+Repository scripts derived from Shimae Server Modpack retain its MIT notice.
+No private configuration, world, credentials, or server address is included.

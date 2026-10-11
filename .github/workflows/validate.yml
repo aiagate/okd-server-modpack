@@ -1,39 +1,42 @@
-name: Validate
+name: CI / Validate
 on:
   push:
+    branches: [main]
   pull_request:
 permissions:
   contents: read
+concurrency:
+  group: validate-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 jobs:
   validate:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
+          ref: ${{ github.sha }}
           persist-credentials: false
-      - run: python3 -m unittest discover -s tests -v
-      - run: python3 -m compileall -q scripts tests
-      - name: Keep ZIP binaries out of Git
-        run: |
-          python3 - <<'PY'
-          import subprocess
-          paths = subprocess.check_output(['git', 'ls-files', '-z']).split(b'\0')
-          if any(p.lower().endswith(b'.zip') for p in paths):
-              raise SystemExit('ZIP binaries belong in Release assets or Actions artifacts, not Git.')
-          PY
-      - name: Build local reconstruction draft offline
-        run: python3 scripts/local_pack.py --output "$RUNNER_TEMP/okd-server-modpack-import-preview.zip"
-      - name: Write checksum for import draft
-        run: |
-          cd "$RUNNER_TEMP"
-          sha256sum okd-server-modpack-import-preview.zip > okd-server-modpack-import-preview.zip.sha256
-      - name: Keep import draft as a build artifact
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - name: Build and verify modpack
+        uses: ./.github/actions/build-pack
         with:
-          name: okd-server-modpack-import-preview-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            ${{ runner.temp }}/okd-server-modpack-import-preview.zip
-            ${{ runner.temp }}/okd-server-modpack-import-preview.zip.sha256
+          output-directory: ${{ runner.temp }}/build
+      - name: Confirm independent rebuild preserves references and settings
+        run: |
+          python3 scripts/native_pack.py --output "$RUNNER_TEMP/rebuild" --packwiz "$RUNNER_TEMP/tools/packwiz"
+          python3 - <<'PY'
+          import os, pathlib
+          a=pathlib.Path(os.environ['RUNNER_TEMP'])/'build'
+          b=a.parent/'rebuild'
+          import json, sys
+          sys.path.insert(0, 'scripts')
+          import native_pack
+          native_pack.compare_builds(a, b)
+          PY
+      - name: Save reviewable generated ZIPs and receipts
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: okd-native-review-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/build/
           retention-days: 14
           if-no-files-found: error
