@@ -10,7 +10,7 @@ Create を中心に、工場の自動化、飛行する装置づくり、素材�
 
 ## サーバー
 
-同じ Release の `okd-server-modpack-<版>-serverpack.zip` を使います。これは Docker の標準インストーラーで MOD と NeoForge を取得するための軽量パックです。MOD JAR・Java・ワールドは同梱せず、展開した JAR を直接起動する方式ではありません。
+同じ Release の `okd-server-modpack-<版>-serverpack.zip` を使います。これは `AUTO_CURSEFORGE` で MOD と NeoForge を取得するための軽量パックです。ZIP 内の `manifest.json` はクライアントと共通で、Compose の指定によりクライアント専用 MOD を除外します。MOD JAR・Java・ワールドは同梱せず、展開した JAR を直接起動する方式ではありません。
 
 ### 準備と設定
 
@@ -34,7 +34,13 @@ MEMORY=4G
 MC_PORT=25565
 ```
 
-必須値は `EULA` です。`MEMORY` と `MC_PORT` は任意で、上記が既定値です。配布された `compose.yaml` の `TYPE=AUTO_CURSEFORGE` と `CF_MODPACK_ZIP=/pack/okd-server-modpack-0.0.1-serverpack.zip` はそのまま使います。[インストーラーの公式案内](https://docker-minecraft-server.readthedocs.io/en/latest/types-and-platforms/mod-platforms/auto-curseforge/)も参照してください。
+必須値は `EULA` です。`MEMORY` と `MC_PORT` は任意で、上記が既定値です。配布された `compose.yaml` の導入設定はそのまま使います。
+
+- `TYPE=AUTO_CURSEFORGE`：manifest の固定 MOD と NeoForge を導入します。
+- `CF_MODPACK_ZIP=/pack/okd-server-modpack-0.0.1-serverpack.zip`：読み取り専用でマウントした元 ZIP を指定します。ホスト側のパスや GitHub のページ URL は渡しません。
+- `CF_SLUG=okd-server-modpack`：ローカル ZIP の識別子です。この方式では CurseForge の公開プロジェクトや `CF_PAGE_URL`・`CF_FILE_ID` の設定は必要ありません。
+
+`java21` イメージにはダウンロード用の CurseForge Core API key が含まれるため、通常は自分のキーを設定せず使えます。作者用の Upload token は使いません。[インストーラーの公式案内](https://docker-minecraft-server.readthedocs.io/en/latest/types-and-platforms/mod-platforms/auto-curseforge/)を参照してください。
 
 ### 起動・接続・停止
 
@@ -54,6 +60,12 @@ docker compose down
 ```
 
 停止後も named volume のデータは残ります。`down -v` はデータを削除するため、通常の停止には使いません。既存ワールドの移行は、停止中のバックアップと構成確認を行ってから別途進めてください。詳細は ZIP 内の `README-SERVER.md` にあります。
+
+### パックの更新
+
+停止中にデータをバックアップし、クライアントとサーバーを同じ Release の版に揃えます。サーバー側は元の Compose プロジェクトを維持し、ZIP と `compose.yaml` を新しい版へ置き換えてください。元 ZIP のファイル名と `CF_MODPACK_ZIP` のパスが一致することを確認します。
+
+MOD の参照が同じまま設定や除外対象だけを変更した場合は、`compose.yaml` の `minecraft.environment` に `CF_FORCE_SYNCHRONIZE: "true"` を一時的に追加して `docker compose up -d` で再作成します。適用後はその行を外し、再度 `docker compose up -d` を実行します。`docker compose restart` だけでは Compose の設定変更は反映されません。
 
 第三者 MOD には各作者のライセンスが適用されます。
 
