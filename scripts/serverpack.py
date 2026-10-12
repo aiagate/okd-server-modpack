@@ -67,48 +67,93 @@ volumes:
 ''').encode()
     files['SERVER-REFERENCES.json'] = (json.dumps({'schema_version':1,'version':version,
         'files':list(refs['server'].values()), 'excluded_project_ids':excluded},indent=2)+'\n').encode()
-    files['README-SERVER.md'] = f'''# OKD Server Modpack {version}: manifest-based server setup
+    files['README-SERVER.md'] = f'''# OKD Server Modpack {version}: サーバー導入
 
-This is installer input, not a standalone preassembled ServerPack. No MOD JARs,
-Java runtime, world, credentials or EULA acceptance are bundled. manifest.json
-is byte-for-byte the verified client manifest; SERVER-REFERENCES.json records
-which pinned references are intended for the server. The compose example uses
-the standard itzg AUTO_CURSEFORGE installer, not a custom downloader.
+`manifest.json` に記録された MOD と NeoForge を、Docker の標準
+`AUTO_CURSEFORGE` インストーラーで取得するための軽量パックです。
+MOD JAR・Java・ワールド・認証情報・EULA への同意は同梱しません。
+`manifest.json` はクライアントと共通で、`SERVER-REFERENCES.json` と
+`compose.yaml` の指定によりクライアント専用 MOD を除外します。
 
-1. Use a new empty directory, copy {name} into it, and extract it there.
-   Keep the original ZIP next to compose.yaml; the installer reads that ZIP.
-2. Create an empty downloads directory. Review Minecraft EULA and explicitly
-   set EULA=true yourself if you agree. Do not reuse an existing production data
-   directory for the first test. Compose creates a project-specific named volume.
-3. Run docker compose up -d. TrueNAS users can use a separate Custom App with
-   equivalent read-only pack/download mounts and a fresh /data dataset.
-   The compose example needs Docker Compose; importing a ZIP into the CurseForge
-   App alone does not install or launch this server.
-4. AUTO_CURSEFORGE downloads pinned MODs and the manifest's loader. If it reports
-   files unavailable through automatic downloads, download those exact files
-   using CurseForge in a browser and put them in downloads, then restart.
-5. Check logs before connecting with the matching client. Set port, memory and
-   host paths for your environment.
+## 準備と設定
 
-Existing world migration is a separate operation: this ZIP contains neither
-the world nor server.properties and does not move them. Legacy CURSEFORGE can
-run below CF_BASE_DIR (by default /data/FeedTheBeast), while AUTO_CURSEFORGE
-installs into /data. Identify the actual working directory and level-name first.
-Use a consistent stopped-server copy/snapshot in a separate data directory for
-migration validation. Preserve world and private operational settings locally;
-install MODs/loader from the manifest instead of carrying old runtime binaries.
-Overrides are applied at installation, so compare existing config changes.
-Changing TYPE or replacing the ZIP alone does not transfer an existing world.
+Docker Engine または Docker Desktop、Docker Compose v2、ZIP を展開できる
+環境、インターネット接続が必要です。Java 21 はコンテナに含まれます。
+ゲーム用メモリは既定で 4G なので、ホストにも余裕を確保してください。
 
-Check the selected image documentation for its Core API key support. If supplying your own, use
-CF_API_KEY_FILE and a Docker secret (or a protected environment variable).
-A Core API key is different from the author Upload API token: never put the
-Upload token in this archive or on the Minecraft server. Image updates can
-change installer behavior; record/pin a tested image digest for production.
+新しい空の `okd-server-{version}` ディレクトリを作り、`{name}` を置いて実行します。
 
-References:
+```sh
+cd okd-server-{version}
+unzip {name}
+mkdir downloads
+```
+
+元 ZIP は `compose.yaml` と同じ場所に残し、`manifest.json` と
+`SERVER-REFERENCES.json` は編集しません。Minecraft EULA を本人が確認し、
+同意する場合だけ、同じ場所に `.env` を作成します。
+
+```dotenv
+EULA=true
+MEMORY=4G
+MC_PORT=25565
+```
+
+必須値は `EULA` です。`MEMORY` と `MC_PORT` は任意で、上記が既定値です。
+配布された `compose.yaml` の導入設定はそのまま使います。
+
+- `TYPE=AUTO_CURSEFORGE`：manifest の固定 MOD と NeoForge を導入します。
+- `CF_MODPACK_ZIP=/pack/{name}`：読み取り専用でマウントした元 ZIP を指定します。
+- `CF_SLUG=okd-server-modpack`：ローカル ZIP の識別子です。この方式では
+  CurseForge の公開プロジェクトや `CF_PAGE_URL`・`CF_FILE_ID` は必要ありません。
+
+`java21` イメージにはダウンロード用の CurseForge Core API key が含まれるため、
+通常は自分のキーを設定せず使えます。作者用の Upload token は使いません。
+自分の Core API key を使う場合は `CF_API_KEY_FILE` と Docker secret などで保護します。
+
+## 起動・接続・停止
+
+同じディレクトリで実行します。
+
+```sh
+docker compose up -d
+docker compose logs -f minecraft
+```
+
+ログに手動ダウンロードが必要な MOD が表示されたら、指定された版の公式ファイルを
+ブラウザで取得して `downloads/` に置き、`docker compose restart minecraft` で再開します。
+起動完了後、同じパック版のクライアントから `サーバーのアドレス:MC_PORT` へ接続します。
+別の端末から接続する場合は、そのポートへの接続を許可してください。
+
+ワールド・設定・取得した MOD は Compose プロジェクトの named volume
+`server-data` に保存されます。ログ表示は Ctrl+C で終了でき、サーバーは動き続けます。
+`docker compose down` で停止してもデータは残ります。`down -v` はデータを削除するため、
+通常の停止には使いません。
+
+## パックの更新
+
+停止中にデータをバックアップし、クライアントとサーバーを同じ Release の版に揃えます。
+元の Compose プロジェクトを維持して ZIP と `compose.yaml` を新しい版へ置き換え、
+元 ZIP のファイル名と `CF_MODPACK_ZIP` のパスが一致することを確認してください。
+
+MOD の参照が同じまま設定や除外対象だけを変更した場合は、`minecraft.environment` に
+`CF_FORCE_SYNCHRONIZE: "true"` を一時的に追加し、`docker compose up -d` で再作成します。
+適用後はその行を外し、再度 `docker compose up -d` を実行します。
+`docker compose restart` だけでは Compose の設定変更は反映されません。
+
+既存ワールドの移行は別途行います。旧 `CURSEFORGE` は既定で `/data/FeedTheBeast`、
+`AUTO_CURSEFORGE` は `/data` を使用するため、実際の作業ディレクトリと `level-name` を
+確認し、停止中のコピーまたはスナップショットを別のデータ領域で検証してください。
+ワールドと運用設定は手元で保持し、MOD と loader は manifest から導入します。
+既存 config の変更も比較してください。TYPE や ZIP の変更だけではワールドは移りません。
+
+TrueNAS では、同じ読み取り専用の pack/downloads マウントと、新しい `/data` dataset を
+使う別の Custom App でも導入できます。本番では検証したイメージの digest を固定してください。
+
+Minecraft EULA: https://www.minecraft.net/eula
+インストーラーの公式案内:
 https://docker-minecraft-server.readthedocs.io/en/latest/types-and-platforms/mod-platforms/auto-curseforge/
-https://blog.curseforge.com/server-packs-tutorial/
+導入案内: https://github.com/aiagate/okd-server-modpack/blob/main/README.md#サーバー
 '''.encode()
     return files
 
